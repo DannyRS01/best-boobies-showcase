@@ -1,0 +1,1363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+<title>Best Boobies Showcase</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #1a0a14;
+    font-family: "Trebuchet MS", "Comic Sans MS", "Segoe UI", sans-serif;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+  }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<script>
+(() => {
+  "use strict";
+
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d", { alpha: false });
+
+  const LS_SCORE = "bestBoobiesShowcase_highScore";
+  const LS_MUTE = "bestBoobiesShowcase_muted";
+
+  let W = 800, H = 600, DPR = 1;
+  let lastT = 0;
+
+  const STATE = {
+    TITLE: "title",
+    INTRO: "intro",
+    SHOWCASE: "showcase",
+    LINEUP: "lineup",
+    REVEAL: "reveal",
+    ROUND_END: "round_end",
+    OVER: "over",
+  };
+  let state = STATE.TITLE;
+
+  const MAX_ROUNDS = 10;
+  const MAX_MISSES = 3;
+
+  const game = {
+    score: 0,
+    streak: 0,
+    round: 0,
+    misses: 0,
+    highScore: parseInt(localStorage.getItem(LS_SCORE) || "0", 10) || 0,
+    contestants: [],
+    showcaseIndex: 0,
+    showcaseTimer: 0,
+    showcaseDuration: 2.2,
+    lineupTimer: 0,
+    revealTimer: 0,
+    pickedId: -1,
+    crowdFavoriteId: -1,
+    lastCorrect: false,
+    lastPoints: 0,
+    msg: "",
+    msgTimer: 0,
+    particles: [],
+    flash: 0,
+  };
+
+  const input = {
+    x: 0, y: 0,
+    down: false,
+    justClicked: false,
+  };
+
+  const buttons = [];
+
+  // ---------- Audio ----------
+  const audio = {
+    ctx: null,
+    muted: localStorage.getItem(LS_MUTE) === "1",
+    ensure() {
+      if (!this.ctx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return;
+        this.ctx = new AC();
+      }
+      if (this.ctx.state === "suspended") this.ctx.resume();
+    },
+    beep(freq, dur, type, vol, slide) {
+      if (this.muted || !this.ctx) return;
+      const t0 = this.ctx.currentTime;
+      const o = this.ctx.createOscillator();
+      const g = this.ctx.createGain();
+      o.type = type || "square";
+      o.frequency.setValueAtTime(freq, t0);
+      if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(40, slide), t0 + dur);
+      g.gain.setValueAtTime(vol || 0.08, t0);
+      g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+      o.connect(g); g.connect(this.ctx.destination);
+      o.start(t0); o.stop(t0 + dur);
+    },
+    click() { this.beep(660, 0.06, "square", 0.06); },
+    show() { this.beep(440, 0.12, "triangle", 0.07, 660); },
+    correct() {
+      this.beep(523, 0.1, "square", 0.09);
+      setTimeout(() => this.beep(659, 0.1, "square", 0.09), 90);
+      setTimeout(() => this.beep(784, 0.18, "square", 0.1), 180);
+    },
+    wrong() { this.beep(220, 0.25, "sawtooth", 0.07, 110); },
+    fanfare() {
+      this.beep(392, 0.12, "triangle", 0.08);
+      setTimeout(() => this.beep(523, 0.12, "triangle", 0.08), 100);
+      setTimeout(() => this.beep(659, 0.2, "triangle", 0.09), 200);
+    },
+  };
+
+  // ---------- Helpers ----------
+  function rand(a, b) { return a + Math.random() * (b - a); }
+  function randi(a, b) { return (a + Math.floor(Math.random() * (b - a + 1))); }
+  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+  function shuffle(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+  function hexToRgb(hex) {
+    const h = hex.replace("#", "");
+    return {
+      r: parseInt(h.slice(0, 2), 16),
+      g: parseInt(h.slice(2, 4), 16),
+      b: parseInt(h.slice(4, 6), 16),
+    };
+  }
+  function shade(hex, amt) {
+    const { r, g, b } = hexToRgb(hex);
+    const f = (c) => clamp(Math.round(c + amt), 0, 255);
+    return `rgb(${f(r)},${f(g)},${f(b)})`;
+  }
+
+  // ---------- Character data ----------
+  const NAMES = [
+    "Bambi", "Cherry", "Daisy", "Foxy", "Ginger", "Honey", "Ivy", "Jinx",
+    "Karma", "Lulu", "Moxie", "Nixie", "Peaches", "Roxy", "Sassy", "Trixie",
+    "Velvet", "Willa", "Yumi", "Zelda", "Bubbles", "Coco", "Dottie", "Ember",
+  ];
+
+  const HAIR_COLORS = [
+    "#2a1a0a", "#4a2c0a", "#8B4513", "#D2691E", "#F4A460",
+    "#FFD700", "#FF69B4", "#C71585", "#DC143C", "#1a1a2e",
+    "#4B0082", "#00CED1", "#FF6347", "#E8D5B7", "#708090",
+  ];
+
+  const SKIN_TONES = [
+    "#FFE0BD", "#F5C9A8", "#E8B898", "#D4A574", "#C68642",
+    "#8D5524", "#FFDAB9", "#F1C27D", "#E0AC69",
+  ];
+
+  const OUTFIT_COLORS = [
+    "#FF1493", "#FF69B4", "#FF4500", "#FFD700", "#00CED1",
+    "#7B68EE", "#32CD32", "#FF6347", "#DC143C", "#00BFFF",
+    "#FF00FF", "#ADFF2F", "#FF8C00", "#BA55D3", "#20B2AA",
+  ];
+
+  const HAIR_STYLES = ["long", "bob", "ponytail", "twin", "spiky", "wavy"];
+  const OUTFIT_STYLES = ["bikini", "dress", "crop", "halter", "leotard"];
+  const BODY_TYPES = ["petite", "athletic", "curvy", "tall", "soft"];
+
+  function makeContestant(id, difficulty) {
+    const bustBase = rand(0.55, 1.35);
+    // Difficulty squeezes bust variance toward middle so lookalikes appear
+    const squeeze = clamp(difficulty * 0.08, 0, 0.55);
+    const bust = lerp(bustBase, 0.95 + rand(-0.08, 0.08), squeeze);
+
+    const body = pick(BODY_TYPES);
+    let heightScale = 1;
+    let hipScale = 1;
+    if (body === "petite") { heightScale = 0.88; hipScale = 0.9; }
+    if (body === "athletic") { heightScale = 1.02; hipScale = 0.85; }
+    if (body === "curvy") { heightScale = 0.98; hipScale = 1.2; }
+    if (body === "tall") { heightScale = 1.12; hipScale = 0.95; }
+    if (body === "soft") { heightScale = 0.95; hipScale = 1.15; }
+
+    // Appeal score: bust dominates, slight body/outfit flair
+    const appeal = bust * 100 + hipScale * 8 + rand(-4, 6);
+
+    return {
+      id,
+      name: pick(NAMES),
+      hairColor: pick(HAIR_COLORS),
+      skin: pick(SKIN_TONES),
+      outfit: pick(OUTFIT_COLORS),
+      hairStyle: pick(HAIR_STYLES),
+      outfitStyle: pick(OUTFIT_STYLES),
+      body,
+      bust,
+      heightScale,
+      hipScale,
+      appeal,
+      // animation
+      pose: 0,
+      jiggle: 0,
+      jiggleVel: 0,
+      turn: 0,
+      bounce: 0,
+      armWave: 0,
+      blink: 0,
+      smile: 0.6,
+      highlight: 0,
+      x: 0,
+      y: 0,
+      scale: 1,
+      selected: false,
+      isFavorite: false,
+    };
+  }
+
+  function ensureUniqueNames(list) {
+    const used = new Set();
+    for (const c of list) {
+      let tries = 0;
+      while (used.has(c.name) && tries < 40) {
+        c.name = pick(NAMES);
+        tries++;
+      }
+      used.add(c.name);
+    }
+  }
+
+  // ---------- Round setup ----------
+  function startGame() {
+    game.score = 0;
+    game.streak = 0;
+    game.round = 0;
+    game.misses = 0;
+    game.particles = [];
+    nextRound();
+  }
+
+  function nextRound() {
+    game.round++;
+    if (game.round > MAX_ROUNDS) {
+      endGame();
+      return;
+    }
+
+    const diff = game.round;
+    const count = clamp(3 + Math.floor((diff - 1) / 3), 3, 5);
+    game.showcaseDuration = clamp(2.4 - diff * 0.12, 1.15, 2.4);
+
+    const list = [];
+    for (let i = 0; i < count; i++) list.push(makeContestant(i, diff));
+
+    // On harder rounds, clone features so lookalikes appear
+    if (diff >= 4) {
+      const base = list[0];
+      for (let i = 1; i < list.length; i++) {
+        if (Math.random() < 0.35 + diff * 0.04) {
+          list[i].hairColor = base.hairColor;
+          list[i].skin = base.skin;
+          if (Math.random() < 0.5) list[i].outfitStyle = base.outfitStyle;
+          if (Math.random() < 0.4) list[i].hairStyle = base.hairStyle;
+          // Pull bust closer
+          list[i].bust = lerp(list[i].bust, base.bust, 0.45 + diff * 0.03);
+          list[i].appeal = list[i].bust * 100 + list[i].hipScale * 8 + rand(-3, 5);
+        }
+      }
+    }
+
+    ensureUniqueNames(list);
+
+    // Pick crowd favorite: highest appeal with slight randomness
+    const ranked = list.slice().sort((a, b) => b.appeal - a.appeal);
+    // 70% top, 20% 2nd, 10% random among top 3
+    let fav;
+    const r = Math.random();
+    if (r < 0.7) fav = ranked[0];
+    else if (r < 0.9 && ranked[1]) fav = ranked[1];
+    else fav = ranked[Math.min(2, ranked.length - 1)];
+    fav.isFavorite = true;
+    game.crowdFavoriteId = fav.id;
+
+    game.contestants = shuffle(list);
+    // Re-assign display positions later
+    layoutContestants();
+
+    game.showcaseIndex = 0;
+    game.showcaseTimer = 0;
+    game.pickedId = -1;
+    game.lastCorrect = false;
+    game.lastPoints = 0;
+    game.msg = "";
+    game.revealTimer = 0;
+
+    state = STATE.INTRO;
+    game.lineupTimer = 1.4;
+    audio.fanfare();
+  }
+
+  function layoutContestants() {
+    const n = game.contestants.length;
+    const margin = W * 0.1;
+    const usable = W - margin * 2;
+    const stageY = H * 0.62;
+    const scale = clamp(0.95 - (n - 3) * 0.08, 0.7, 0.95) * Math.min(1, H / 640);
+    game.contestants.forEach((c, i) => {
+      c.x = margin + usable * ((i + 0.5) / n);
+      c.y = stageY;
+      c.scale = scale;
+      c.pose = 0;
+      c.jiggle = 0;
+      c.jiggleVel = 0;
+      c.turn = 0;
+      c.bounce = 0;
+      c.armWave = 0;
+      c.highlight = 0;
+      c.selected = false;
+    });
+  }
+
+  function endGame() {
+    state = STATE.OVER;
+    if (game.score > game.highScore) {
+      game.highScore = game.score;
+      localStorage.setItem(LS_SCORE, String(game.highScore));
+    }
+    audio.beep(300, 0.3, "triangle", 0.1, 150);
+  }
+
+  // ---------- Drawing: stage ----------
+  function drawBackground() {
+    // Curtain / stage vibe
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, "#2a0820");
+    g.addColorStop(0.45, "#4a1038");
+    g.addColorStop(1, "#1a0612");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    // Spotlights
+    for (let i = 0; i < 3; i++) {
+      const sx = W * (0.2 + i * 0.3);
+      const sg = ctx.createRadialGradient(sx, H * 0.15, 10, sx, H * 0.55, H * 0.55);
+      sg.addColorStop(0, "rgba(255,220,180,0.18)");
+      sg.addColorStop(1, "rgba(255,180,120,0)");
+      ctx.fillStyle = sg;
+      ctx.beginPath();
+      ctx.moveTo(sx - 40, 0);
+      ctx.lineTo(sx + 40, 0);
+      ctx.lineTo(sx + W * 0.22, H);
+      ctx.lineTo(sx - W * 0.22, H);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Stage floor
+    const fy = H * 0.72;
+    ctx.fillStyle = "#3d1a2e";
+    ctx.fillRect(0, fy, W, H - fy);
+    const fg = ctx.createLinearGradient(0, fy, 0, H);
+    fg.addColorStop(0, "#5a2848");
+    fg.addColorStop(1, "#2a1020");
+    ctx.fillStyle = fg;
+    ctx.fillRect(0, fy, W, H - fy);
+
+    // Runway strip
+    ctx.fillStyle = "rgba(255,200,150,0.12)";
+    ctx.fillRect(W * 0.15, fy, W * 0.7, 18);
+    ctx.strokeStyle = "rgba(255,215,100,0.35)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(W * 0.15, fy, W * 0.7, 18);
+
+    // Curtains sides
+    drawCurtain(0, 1);
+    drawCurtain(W, -1);
+
+    // Title bar / marquee
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.fillRect(0, 0, W, 52);
+    ctx.fillStyle = "#FFD700";
+    ctx.font = `bold ${Math.floor(W * 0.035)}px Trebuchet MS, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.fillText("BEST BOOBIES SHOWCASE", W / 2, 34);
+  }
+
+  function drawCurtain(x, dir) {
+    ctx.save();
+    ctx.translate(x, 0);
+    ctx.scale(dir, 1);
+    for (let i = 0; i < 6; i++) {
+      const cx = i * 18;
+      ctx.fillStyle = i % 2 === 0 ? "#8B0A50" : "#A01260";
+      ctx.beginPath();
+      ctx.moveTo(cx, 0);
+      ctx.quadraticCurveTo(cx + 22, H * 0.25, cx + 8, H * 0.55);
+      ctx.lineTo(cx - 10, H * 0.55);
+      ctx.quadraticCurveTo(cx + 4, H * 0.25, cx - 14, 0);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // ---------- Drawing: character ----------
+  function drawContestant(c, t, focus) {
+    const s = c.scale * (focus ? 1.08 : 1);
+    const jx = Math.sin(c.jiggle) * (3 + c.bust * 4);
+    const jy = Math.abs(Math.sin(c.jiggle * 0.5)) * (2 + c.bust * 3);
+    const bounceY = Math.sin(c.bounce) * 4;
+    const turnLean = Math.sin(c.turn) * 0.12;
+
+    ctx.save();
+    ctx.translate(c.x + jx * 0.3, c.y + bounceY);
+    ctx.scale(s * c.heightScale, s * c.heightScale);
+    ctx.rotate(turnLean);
+
+    if (c.highlight > 0) {
+      ctx.shadowColor = "rgba(255,215,0,0.8)";
+      ctx.shadowBlur = 28 * c.highlight;
+    }
+
+    const skin = c.skin;
+    const skinDark = shade(c.skin, -25);
+    const outfit = c.outfit;
+    const outfitDark = shade(c.outfit, -30);
+
+    // Legs
+    ctx.fillStyle = skin;
+    ctx.beginPath();
+    ctx.ellipse(-14 * c.hipScale, 55, 11, 38, 0.08, 0, Math.PI * 2);
+    ctx.ellipse(14 * c.hipScale, 55, 11, 38, -0.08, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Hips / lower body
+    ctx.fillStyle = skin;
+    ctx.beginPath();
+    ctx.ellipse(0, 28, 28 * c.hipScale, 22, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Bottoms (outfit bottoms)
+    ctx.fillStyle = outfit;
+    ctx.beginPath();
+    if (c.outfitStyle === "bikini" || c.outfitStyle === "halter") {
+      ctx.moveTo(-22 * c.hipScale, 22);
+      ctx.quadraticCurveTo(0, 38, 22 * c.hipScale, 22);
+      ctx.quadraticCurveTo(0, 48, -22 * c.hipScale, 22);
+    } else {
+      ctx.ellipse(0, 30, 26 * c.hipScale, 16, 0, 0, Math.PI * 2);
+    }
+    ctx.fill();
+
+    // Torso
+    const torsoW = 22 + c.bust * 6;
+    ctx.fillStyle = skin;
+    ctx.beginPath();
+    ctx.moveTo(-torsoW * 0.55, 20);
+    ctx.quadraticCurveTo(-torsoW * 0.7, -10, -torsoW * 0.45, -35);
+    ctx.quadraticCurveTo(0, -42, torsoW * 0.45, -35);
+    ctx.quadraticCurveTo(torsoW * 0.7, -10, torsoW * 0.55, 20);
+    ctx.closePath();
+    ctx.fill();
+
+    // Bust — cartoon exaggerated
+    const bustR = 12 + c.bust * 16;
+    const bustY = -8 + jy;
+    const bustSep = 6 + c.bust * 4;
+    const armLift = Math.sin(c.armWave) * 0.4;
+
+    ctx.fillStyle = skin;
+    // left breast
+    ctx.beginPath();
+    ctx.ellipse(-bustSep, bustY, bustR * 0.95, bustR * 1.05, -0.15 + turnLean, 0, Math.PI * 2);
+    ctx.fill();
+    // right breast
+    ctx.beginPath();
+    ctx.ellipse(bustSep, bustY, bustR * 0.95, bustR * 1.05, 0.15 + turnLean, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Cleavage shade
+    ctx.fillStyle = skinDark;
+    ctx.globalAlpha = 0.35;
+    ctx.beginPath();
+    ctx.ellipse(0, bustY + 2, 4 + c.bust * 3, bustR * 0.7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // Highlight shine on bust
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    ctx.beginPath();
+    ctx.ellipse(-bustSep - 3, bustY - bustR * 0.35, bustR * 0.25, bustR * 0.18, -0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(bustSep - 2, bustY - bustR * 0.35, bustR * 0.22, bustR * 0.15, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Top / bikini top / dress top
+    drawOutfitTop(c, bustSep, bustY, bustR, outfit, outfitDark);
+
+    // Arms
+    ctx.strokeStyle = skin;
+    ctx.lineWidth = 10;
+    ctx.lineCap = "round";
+    // left arm
+    ctx.beginPath();
+    ctx.moveTo(-torsoW * 0.5, -20);
+    const lx = -35 - Math.sin(c.armWave) * 18;
+    const ly = 5 + Math.cos(c.armWave) * 12 * armLift;
+    ctx.quadraticCurveTo(-40, -5, lx, ly);
+    ctx.stroke();
+    // right arm — often hand-on-hip or wave
+    ctx.beginPath();
+    ctx.moveTo(torsoW * 0.5, -20);
+    const rx = 32 + Math.sin(c.armWave + 1) * 10;
+    const ry = 10 - Math.sin(c.pose) * 20;
+    ctx.quadraticCurveTo(38, 0, rx, ry);
+    ctx.stroke();
+
+    // Hands
+    ctx.fillStyle = skin;
+    ctx.beginPath();
+    ctx.arc(lx, ly, 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(rx, ry, 7, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Neck
+    ctx.fillStyle = skin;
+    ctx.fillRect(-7, -52, 14, 14);
+
+    // Head
+    ctx.beginPath();
+    ctx.ellipse(0, -68, 22, 26, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Hair
+    drawHair(c);
+
+    // Face
+    drawFace(c);
+
+    // Name plate
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    roundRect(-36, 88, 72, 22, 8);
+    ctx.fill();
+    ctx.fillStyle = c.isFavorite && state === STATE.REVEAL ? "#FFD700" : "#fff";
+    ctx.font = "bold 13px Trebuchet MS, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(c.name, 0, 99);
+
+    // Selection ring
+    if (c.selected || (state === STATE.LINEUP && hitContestant(c, input.x, input.y))) {
+      ctx.strokeStyle = "#FFD700";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.ellipse(0, 10, 48, 95, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // Favorite crown on reveal
+    if (state === STATE.REVEAL && c.isFavorite) {
+      ctx.fillStyle = "#FFD700";
+      ctx.font = "28px serif";
+      ctx.fillText("👑", 0, -110);
+    }
+
+    ctx.restore();
+  }
+
+  function drawOutfitTop(c, bustSep, bustY, bustR, outfit, outfitDark) {
+    ctx.fillStyle = outfit;
+    const style = c.outfitStyle;
+    if (style === "bikini" || style === "halter") {
+      // Triangles
+      ctx.beginPath();
+      ctx.moveTo(-bustSep - bustR * 0.7, bustY - 4);
+      ctx.lineTo(-bustSep, bustY + bustR * 0.55);
+      ctx.lineTo(-bustSep + bustR * 0.55, bustY - 6);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(bustSep + bustR * 0.7, bustY - 4);
+      ctx.lineTo(bustSep, bustY + bustR * 0.55);
+      ctx.lineTo(bustSep - bustR * 0.55, bustY - 6);
+      ctx.closePath();
+      ctx.fill();
+      // Straps
+      ctx.strokeStyle = outfit;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(-bustSep - 4, bustY - bustR * 0.3);
+      ctx.lineTo(-8, -40);
+      ctx.moveTo(bustSep + 4, bustY - bustR * 0.3);
+      ctx.lineTo(8, -40);
+      ctx.stroke();
+      // Tie
+      ctx.fillStyle = outfitDark;
+      ctx.beginPath();
+      ctx.arc(0, bustY + 2, 4, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (style === "crop") {
+      ctx.beginPath();
+      ctx.moveTo(-bustSep - bustR, bustY - bustR * 0.5);
+      ctx.quadraticCurveTo(0, bustY - bustR * 0.9, bustSep + bustR, bustY - bustR * 0.5);
+      ctx.lineTo(bustSep + bustR * 0.8, bustY + bustR * 0.4);
+      ctx.quadraticCurveTo(0, bustY + bustR * 0.7, -bustSep - bustR * 0.8, bustY + bustR * 0.4);
+      ctx.closePath();
+      ctx.fill();
+    } else if (style === "dress") {
+      ctx.beginPath();
+      ctx.moveTo(-20, -38);
+      ctx.lineTo(20, -38);
+      ctx.lineTo(bustSep + bustR * 0.9, bustY + bustR * 0.5);
+      ctx.quadraticCurveTo(0, bustY + bustR * 0.85, -bustSep - bustR * 0.9, bustY + bustR * 0.5);
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      // leotard
+      ctx.beginPath();
+      ctx.moveTo(-16, -40);
+      ctx.quadraticCurveTo(0, -48, 16, -40);
+      ctx.lineTo(bustSep + bustR * 0.7, bustY + bustR * 0.3);
+      ctx.quadraticCurveTo(0, bustY + bustR * 0.9, -bustSep - bustR * 0.7, bustY + bustR * 0.3);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  function drawHair(c) {
+    ctx.fillStyle = c.hairColor;
+    const style = c.hairStyle;
+    if (style === "long") {
+      ctx.beginPath();
+      ctx.ellipse(0, -70, 26, 28, 0, Math.PI, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(-22, -40, 12, 40, 0.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(22, -40, 12, 40, -0.2, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (style === "bob") {
+      ctx.beginPath();
+      ctx.ellipse(0, -68, 25, 26, 0, Math.PI * 0.95, Math.PI * 2.05);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(-18, -55, 10, 16, 0, 0, Math.PI * 2);
+      ctx.ellipse(18, -55, 10, 16, 0, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (style === "ponytail") {
+      ctx.beginPath();
+      ctx.ellipse(0, -72, 24, 24, 0, Math.PI, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(18, -50, 10, 28, -0.5, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (style === "twin") {
+      ctx.beginPath();
+      ctx.ellipse(0, -72, 24, 22, 0, Math.PI, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(-28, -45, 11, 30, 0.3, 0, Math.PI * 2);
+      ctx.ellipse(28, -45, 11, 30, -0.3, 0, Math.PI * 2);
+      ctx.fill();
+      // bows
+      ctx.fillStyle = c.outfit;
+      ctx.beginPath();
+      ctx.arc(-28, -70, 6, 0, Math.PI * 2);
+      ctx.arc(28, -70, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = c.hairColor;
+    } else if (style === "spiky") {
+      ctx.beginPath();
+      for (let i = 0; i < 8; i++) {
+        const a = Math.PI + (i / 7) * Math.PI;
+        const r = 28 + (i % 2) * 12;
+        const px = Math.cos(a) * r;
+        const py = -68 + Math.sin(a) * r * 0.7;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      // wavy
+      ctx.beginPath();
+      ctx.ellipse(0, -70, 26, 28, 0, Math.PI, Math.PI * 2);
+      ctx.fill();
+      for (let i = -2; i <= 2; i++) {
+        ctx.beginPath();
+        ctx.ellipse(i * 12, -35 + Math.abs(i) * 4, 10, 32, i * 0.1, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  function drawFace(c) {
+    // Eyes
+    const blink = c.blink > 0.85 ? 0.15 : 1;
+    ctx.fillStyle = "#fff";
+    ctx.beginPath();
+    ctx.ellipse(-8, -70, 5, 5 * blink, 0, 0, Math.PI * 2);
+    ctx.ellipse(8, -70, 5, 5 * blink, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#2a1020";
+    ctx.beginPath();
+    ctx.arc(-8, -70, 2.5 * blink, 0, Math.PI * 2);
+    ctx.arc(8, -70, 2.5 * blink, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Brows
+    ctx.strokeStyle = shade(c.hairColor, -20);
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-13, -78);
+    ctx.quadraticCurveTo(-8, -80, -3, -78);
+    ctx.moveTo(3, -78);
+    ctx.quadraticCurveTo(8, -80, 13, -78);
+    ctx.stroke();
+
+    // Nose
+    ctx.strokeStyle = shade(c.skin, -30);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(0, -66);
+    ctx.lineTo(2, -60);
+    ctx.stroke();
+
+    // Mouth / smile
+    ctx.strokeStyle = "#C71585";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    const smile = 4 + c.smile * 4;
+    ctx.arc(0, -54, smile, 0.15, Math.PI - 0.15);
+    ctx.stroke();
+
+    // Blush
+    ctx.fillStyle = "rgba(255,120,140,0.35)";
+    ctx.beginPath();
+    ctx.ellipse(-14, -58, 6, 3, 0, 0, Math.PI * 2);
+    ctx.ellipse(14, -58, 6, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  // ---------- Particles ----------
+  function spawnHearts(x, y, n) {
+    for (let i = 0; i < n; i++) {
+      game.particles.push({
+        x, y,
+        vx: rand(-60, 60),
+        vy: rand(-120, -40),
+        life: rand(0.6, 1.2),
+        max: 1.2,
+        kind: "heart",
+        size: rand(10, 18),
+      });
+    }
+  }
+  function spawnStars(x, y, n) {
+    for (let i = 0; i < n; i++) {
+      game.particles.push({
+        x, y,
+        vx: rand(-80, 80),
+        vy: rand(-100, -20),
+        life: rand(0.5, 1),
+        max: 1,
+        kind: "star",
+        size: rand(8, 14),
+      });
+    }
+  }
+
+  function updateParticles(dt) {
+    for (const p of game.particles) {
+      p.life -= dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += 80 * dt;
+    }
+    game.particles = game.particles.filter((p) => p.life > 0);
+  }
+
+  function drawParticles() {
+    for (const p of game.particles) {
+      const a = clamp(p.life / p.max, 0, 1);
+      ctx.globalAlpha = a;
+      ctx.font = `${p.size}px serif`;
+      ctx.textAlign = "center";
+      ctx.fillText(p.kind === "heart" ? "♥" : "★", p.x, p.y);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // ---------- HUD / UI ----------
+  function drawHUD() {
+    const pad = 12;
+    ctx.fillStyle = "rgba(0,0,0,0.5)";
+    roundRect(pad, 58, 150, 78, 10);
+    ctx.fill();
+    ctx.fillStyle = "#FFD700";
+    ctx.font = "bold 14px Trebuchet MS, sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText(`SCORE  ${game.score}`, pad + 12, 68);
+    ctx.fillStyle = "#FF69B4";
+    ctx.fillText(`STREAK  ${game.streak}`, pad + 12, 90);
+    ctx.fillStyle = "#fff";
+    ctx.fillText(`ROUND  ${game.round}/${MAX_ROUNDS}`, pad + 12, 112);
+
+    // Misses hearts
+    ctx.fillStyle = "rgba(0,0,0,0.5)";
+    roundRect(W - 130, 58, 118, 36, 10);
+    ctx.fill();
+    ctx.font = "18px serif";
+    ctx.textAlign = "center";
+    let hearts = "";
+    for (let i = 0; i < MAX_MISSES; i++) {
+      hearts += i < (MAX_MISSES - game.misses) ? "♥ " : "♡ ";
+    }
+    ctx.fillStyle = "#FF69B4";
+    ctx.fillText(hearts.trim(), W - 71, 78);
+
+    // Mute button
+    drawMuteButton();
+  }
+
+  function muteButtonRect() {
+    return { x: W - 52, y: H - 52, w: 40, h: 40 };
+  }
+
+  function drawMuteButton() {
+    const b = muteButtonRect();
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    roundRect(b.x, b.y, b.w, b.h, 10);
+    ctx.fill();
+    ctx.font = "20px serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#fff";
+    ctx.fillText(audio.muted ? "🔇" : "🔊", b.x + b.w / 2, b.y + b.h / 2 + 1);
+  }
+
+  function hitMute(x, y) {
+    const b = muteButtonRect();
+    return x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
+  }
+
+  function drawButton(label, x, y, w, h, hot) {
+    ctx.fillStyle = hot ? "#FF69B4" : "#C71585";
+    roundRect(x - w / 2, y - h / 2, w, h, 14);
+    ctx.fill();
+    ctx.strokeStyle = "#FFD700";
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.fillStyle = "#fff";
+    ctx.font = `bold ${Math.floor(h * 0.4)}px Trebuchet MS, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, x, y + 1);
+    return { x: x - w / 2, y: y - h / 2, w, h };
+  }
+
+  function hitButton(b, x, y) {
+    return b && x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
+  }
+
+  function hitContestant(c, x, y) {
+    const s = c.scale * c.heightScale;
+    const left = c.x - 55 * s;
+    const right = c.x + 55 * s;
+    const top = c.y - 130 * s;
+    const bottom = c.y + 100 * s;
+    return x >= left && x <= right && y >= top && y <= bottom;
+  }
+
+  // ---------- Screens ----------
+  function drawTitle(t) {
+    drawBackground();
+
+    // Floating decorative bust silhouettes (abstract, playful)
+    ctx.globalAlpha = 0.15;
+    for (let i = 0; i < 5; i++) {
+      const px = W * (0.1 + i * 0.2) + Math.sin(t + i) * 10;
+      const py = H * 0.35 + Math.cos(t * 0.7 + i) * 20;
+      ctx.fillStyle = "#FF69B4";
+      ctx.beginPath();
+      ctx.ellipse(px - 12, py, 18, 20, -0.2, 0, Math.PI * 2);
+      ctx.ellipse(px + 12, py, 18, 20, 0.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    roundRect(W * 0.1, H * 0.12, W * 0.8, H * 0.62, 20);
+    ctx.fill();
+
+    ctx.fillStyle = "#FFD700";
+    ctx.font = `bold ${Math.floor(W * 0.055)}px Trebuchet MS, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("BEST BOOBIES", W / 2, H * 0.22);
+    ctx.fillStyle = "#FF69B4";
+    ctx.font = `bold ${Math.floor(W * 0.05)}px Trebuchet MS, sans-serif`;
+    ctx.fillText("SHOWCASE", W / 2, H * 0.30);
+
+    ctx.fillStyle = "#fff";
+    ctx.font = `${Math.floor(W * 0.022)}px Trebuchet MS, sans-serif`;
+    const lines = [
+      "Watch the cartoon contestants show off on the runway,",
+      "then tap the girl with the BEST BOOBIES!",
+      "",
+      "• Correct pick = big points + streak bonus",
+      "• Wrong pick = consolation crumbs (or a miss)",
+      "• Harder rounds = lookalikes & less time",
+      `• ${MAX_ROUNDS} rounds or ${MAX_MISSES} misses = game over`,
+      "",
+      "Playful adult cartoon humor. Original characters only.",
+    ];
+    let ly = H * 0.38;
+    for (const line of lines) {
+      ctx.fillText(line, W / 2, ly);
+      ly += H * 0.032;
+    }
+
+    const hot = hitButton(
+      { x: W / 2 - 110, y: H * 0.78 - 28, w: 220, h: 56 },
+      input.x, input.y
+    );
+    const btn = drawButton("START SHOW", W / 2, H * 0.78, 220, 56, hot);
+    buttons.length = 0;
+    buttons.push({ id: "start", ...btn });
+
+    ctx.fillStyle = "#FFD700";
+    ctx.font = "14px Trebuchet MS, sans-serif";
+    ctx.fillText(`High Score: ${game.highScore}`, W / 2, H * 0.88);
+
+    drawMuteButton();
+  }
+
+  function drawIntro(t) {
+    drawBackground();
+    for (const c of game.contestants) drawContestant(c, t, false);
+    drawHUD();
+
+    ctx.fillStyle = "rgba(0,0,0,0.45)";
+    roundRect(W * 0.2, H * 0.08, W * 0.6, 50, 12);
+    ctx.fill();
+    ctx.fillStyle = "#FFD700";
+    ctx.font = `bold ${Math.floor(W * 0.032)}px Trebuchet MS, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(`Round ${game.round} — Contestants, take the stage!`, W / 2, H * 0.08 + 25);
+  }
+
+  function drawShowcase(t) {
+    drawBackground();
+    const focus = game.contestants[game.showcaseIndex];
+    for (const c of game.contestants) {
+      drawContestant(c, t, c === focus);
+    }
+    drawHUD();
+
+    if (focus) {
+      ctx.fillStyle = "rgba(0,0,0,0.5)";
+      roundRect(W * 0.25, H * 0.08, W * 0.5, 44, 12);
+      ctx.fill();
+      ctx.fillStyle = "#FF69B4";
+      ctx.font = `bold ${Math.floor(W * 0.028)}px Trebuchet MS, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(`${focus.name} is showing off…`, W / 2, H * 0.08 + 22);
+
+      // Progress bar
+      const pct = clamp(game.showcaseTimer / game.showcaseDuration, 0, 1);
+      ctx.fillStyle = "rgba(255,255,255,0.2)";
+      roundRect(W * 0.3, H * 0.08 + 48, W * 0.4, 8, 4);
+      ctx.fill();
+      ctx.fillStyle = "#FFD700";
+      roundRect(W * 0.3, H * 0.08 + 48, W * 0.4 * pct, 8, 4);
+      ctx.fill();
+    }
+  }
+
+  function drawLineup(t) {
+    drawBackground();
+    for (const c of game.contestants) drawContestant(c, t, false);
+    drawHUD();
+
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    roundRect(W * 0.15, H * 0.06, W * 0.7, 56, 12);
+    ctx.fill();
+    ctx.fillStyle = "#FFD700";
+    ctx.font = `bold ${Math.floor(W * 0.03)}px Trebuchet MS, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("Who has the BEST BOOBIES? Tap to pick!", W / 2, H * 0.06 + 28);
+
+    // Skip wait — already interactive
+  }
+
+  function drawReveal(t) {
+    drawBackground();
+    for (const c of game.contestants) drawContestant(c, t, c.isFavorite);
+    drawHUD();
+    drawParticles();
+
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    roundRect(W * 0.12, H * 0.05, W * 0.76, 70, 14);
+    ctx.fill();
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    if (game.lastCorrect) {
+      ctx.fillStyle = "#7CFC00";
+      ctx.font = `bold ${Math.floor(W * 0.032)}px Trebuchet MS, sans-serif`;
+      ctx.fillText(`Nailed it! +${game.lastPoints} pts`, W / 2, H * 0.05 + 28);
+      ctx.fillStyle = "#FFD700";
+      ctx.font = `${Math.floor(W * 0.022)}px Trebuchet MS, sans-serif`;
+      const fav = game.contestants.find((c) => c.isFavorite);
+      ctx.fillText(`Crowd favorite: ${fav ? fav.name : "?"}`, W / 2, H * 0.05 + 52);
+    } else {
+      ctx.fillStyle = "#FF6B6B";
+      ctx.font = `bold ${Math.floor(W * 0.03)}px Trebuchet MS, sans-serif`;
+      ctx.fillText(`Not quite… +${game.lastPoints} consolation`, W / 2, H * 0.05 + 28);
+      ctx.fillStyle = "#FFD700";
+      ctx.font = `${Math.floor(W * 0.022)}px Trebuchet MS, sans-serif`;
+      const fav = game.contestants.find((c) => c.isFavorite);
+      ctx.fillText(`Crowd loved ${fav ? fav.name : "?"}'s look!`, W / 2, H * 0.05 + 52);
+    }
+  }
+
+  function drawRoundEnd(t) {
+    drawReveal(t);
+    const hot = hitButton(
+      { x: W / 2 - 100, y: H * 0.9 - 24, w: 200, h: 48 },
+      input.x, input.y
+    );
+    const btn = drawButton(
+      game.round >= MAX_ROUNDS ? "SEE RESULTS" : "NEXT ROUND",
+      W / 2, H * 0.9, 200, 48, hot
+    );
+    buttons.length = 0;
+    buttons.push({ id: "next", ...btn });
+  }
+
+  function drawOver(t) {
+    drawBackground();
+    ctx.fillStyle = "rgba(0,0,0,0.65)";
+    roundRect(W * 0.12, H * 0.18, W * 0.76, H * 0.55, 20);
+    ctx.fill();
+
+    ctx.fillStyle = "#FFD700";
+    ctx.font = `bold ${Math.floor(W * 0.05)}px Trebuchet MS, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("SHOW'S OVER!", W / 2, H * 0.28);
+
+    ctx.fillStyle = "#FF69B4";
+    ctx.font = `bold ${Math.floor(W * 0.04)}px Trebuchet MS, sans-serif`;
+    ctx.fillText(`Score: ${game.score}`, W / 2, H * 0.40);
+
+    ctx.fillStyle = "#fff";
+    ctx.font = `${Math.floor(W * 0.025)}px Trebuchet MS, sans-serif`;
+    ctx.fillText(`High Score: ${game.highScore}`, W / 2, H * 0.48);
+    ctx.fillText(`Best streak: ${game.streak}  •  Rounds: ${Math.min(game.round, MAX_ROUNDS)}`, W / 2, H * 0.55);
+
+    if (game.score >= game.highScore && game.score > 0) {
+      ctx.fillStyle = "#7CFC00";
+      ctx.font = `bold ${Math.floor(W * 0.028)}px Trebuchet MS, sans-serif`;
+      ctx.fillText("★ NEW HIGH SCORE ★", W / 2, H * 0.62);
+    }
+
+    const hot = hitButton(
+      { x: W / 2 - 110, y: H * 0.72 - 28, w: 220, h: 56 },
+      input.x, input.y
+    );
+    const btn = drawButton("PLAY AGAIN", W / 2, H * 0.72, 220, 56, hot);
+    buttons.length = 0;
+    buttons.push({ id: "restart", ...btn });
+
+    drawMuteButton();
+  }
+
+  // ---------- Update ----------
+  function updateContestantAnim(c, dt, showcasing) {
+    c.blink += dt * rand(0.4, 0.8);
+    if (c.blink > 1) c.blink = 0;
+    c.bounce += dt * 3;
+    if (showcasing) {
+      c.pose += dt * 4;
+      c.armWave += dt * 5;
+      c.turn += dt * 2.5;
+      // jiggle spring
+      c.jiggleVel += (Math.sin(c.pose * 2) * 2 - c.jiggle) * 18 * dt;
+      c.jiggleVel *= 0.92;
+      c.jiggle += c.jiggleVel * dt * 10;
+      c.smile = 0.9;
+      c.highlight = lerp(c.highlight, 1, dt * 4);
+    } else {
+      c.armWave += dt * 1.2;
+      c.jiggleVel += -c.jiggle * 10 * dt;
+      c.jiggleVel *= 0.9;
+      c.jiggle += c.jiggleVel * dt * 8;
+      c.smile = 0.55;
+      if (!(state === STATE.REVEAL && c.isFavorite)) {
+        c.highlight = lerp(c.highlight, 0, dt * 3);
+      }
+    }
+  }
+
+  function beginShowcasePose(c) {
+    c.jiggle = 0;
+    c.jiggleVel = 8 + c.bust * 6;
+    c.pose = 0;
+    c.armWave = 0;
+    c.turn = 0;
+    audio.show();
+  }
+
+  function pickContestant(c) {
+    if (state !== STATE.LINEUP) return;
+    game.pickedId = c.id;
+    c.selected = true;
+    audio.click();
+
+    const correct = c.id === game.crowdFavoriteId;
+    game.lastCorrect = correct;
+    if (correct) {
+      game.streak++;
+      const base = 100 + game.round * 15;
+      const bonus = Math.min(game.streak, 8) * 25;
+      game.lastPoints = base + bonus;
+      game.score += game.lastPoints;
+      spawnHearts(c.x, c.y - 80, 12);
+      spawnStars(c.x, c.y - 40, 8);
+      audio.correct();
+    } else {
+      game.streak = 0;
+      game.misses++;
+      game.lastPoints = 10 + Math.floor(game.round * 2);
+      game.score += game.lastPoints;
+      audio.wrong();
+      // still mild particles on favorite
+      const fav = game.contestants.find((x) => x.isFavorite);
+      if (fav) spawnHearts(fav.x, fav.y - 80, 6);
+    }
+
+    // Highlight favorite
+    for (const x of game.contestants) {
+      if (x.isFavorite) x.highlight = 1;
+    }
+
+    state = STATE.REVEAL;
+    game.revealTimer = 1.8;
+  }
+
+  function update(dt, t) {
+    updateParticles(dt);
+    if (game.flash > 0) game.flash -= dt;
+
+    if (state === STATE.TITLE || state === STATE.OVER) return;
+
+    for (const c of game.contestants) {
+      const showcasing =
+        state === STATE.SHOWCASE && game.contestants[game.showcaseIndex] === c;
+      updateContestantAnim(c, dt, showcasing || (state === STATE.REVEAL && c.isFavorite));
+    }
+
+    if (state === STATE.INTRO) {
+      game.lineupTimer -= dt;
+      if (game.lineupTimer <= 0) {
+        state = STATE.SHOWCASE;
+        game.showcaseIndex = 0;
+        game.showcaseTimer = 0;
+        if (game.contestants[0]) beginShowcasePose(game.contestants[0]);
+      }
+    } else if (state === STATE.SHOWCASE) {
+      game.showcaseTimer += dt;
+      if (game.showcaseTimer >= game.showcaseDuration) {
+        game.showcaseIndex++;
+        game.showcaseTimer = 0;
+        if (game.showcaseIndex >= game.contestants.length) {
+          state = STATE.LINEUP;
+          // idle bounce for all
+          for (const c of game.contestants) {
+            c.jiggleVel = 3;
+          }
+        } else {
+          beginShowcasePose(game.contestants[game.showcaseIndex]);
+        }
+      }
+    } else if (state === STATE.REVEAL) {
+      game.revealTimer -= dt;
+      if (game.revealTimer <= 0) {
+        if (game.misses >= MAX_MISSES) {
+          endGame();
+        } else {
+          state = STATE.ROUND_END;
+        }
+      }
+    }
+  }
+
+  // ---------- Input ----------
+  function onPointer(x, y, isDown) {
+    input.x = x;
+    input.y = y;
+    if (isDown) {
+      input.down = true;
+      input.justClicked = true;
+      handleClick(x, y);
+    } else {
+      input.down = false;
+    }
+  }
+
+  function handleClick(x, y) {
+    audio.ensure();
+    if (hitMute(x, y)) {
+      audio.muted = !audio.muted;
+      localStorage.setItem(LS_MUTE, audio.muted ? "1" : "0");
+      audio.click();
+      return;
+    }
+
+    if (state === STATE.TITLE) {
+      for (const b of buttons) {
+        if (b.id === "start" && hitButton(b, x, y)) {
+          audio.click();
+          startGame();
+          return;
+        }
+      }
+    } else if (state === STATE.LINEUP) {
+      // pick largest hit area first (rightmost overlap rare)
+      for (let i = game.contestants.length - 1; i >= 0; i--) {
+        const c = game.contestants[i];
+        if (hitContestant(c, x, y)) {
+          pickContestant(c);
+          return;
+        }
+      }
+    } else if (state === STATE.ROUND_END) {
+      for (const b of buttons) {
+        if (b.id === "next" && hitButton(b, x, y)) {
+          audio.click();
+          nextRound();
+          return;
+        }
+      }
+    } else if (state === STATE.OVER) {
+      for (const b of buttons) {
+        if (b.id === "restart" && hitButton(b, x, y)) {
+          audio.click();
+          startGame();
+          return;
+        }
+      }
+    }
+  }
+
+  function canvasPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    return {
+      x: ((clientX - rect.left) / rect.width) * W,
+      y: ((clientY - rect.top) / rect.height) * H,
+    };
+  }
+
+  canvas.addEventListener("mousedown", (e) => {
+    const p = canvasPos(e);
+    onPointer(p.x, p.y, true);
+  });
+  canvas.addEventListener("mouseup", (e) => {
+    const p = canvasPos(e);
+    onPointer(p.x, p.y, false);
+  });
+  canvas.addEventListener("mousemove", (e) => {
+    const p = canvasPos(e);
+    input.x = p.x;
+    input.y = p.y;
+  });
+  canvas.addEventListener("touchstart", (e) => {
+    e.preventDefault();
+    const p = canvasPos(e);
+    onPointer(p.x, p.y, true);
+  }, { passive: false });
+  canvas.addEventListener("touchmove", (e) => {
+    e.preventDefault();
+    const p = canvasPos(e);
+    input.x = p.x;
+    input.y = p.y;
+  }, { passive: false });
+  canvas.addEventListener("touchend", (e) => {
+    e.preventDefault();
+    input.down = false;
+  }, { passive: false });
+
+  // ---------- Resize / loop ----------
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = Math.max(480, Math.floor(window.innerWidth));
+    H = Math.max(360, Math.floor(window.innerHeight));
+    // Keep a reasonable aspect for layout
+    canvas.width = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    if (game.contestants.length) layoutContestants();
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  function frame(ts) {
+    const t = ts * 0.001;
+    let dt = t - lastT;
+    lastT = t;
+    if (dt > 0.05) dt = 0.05;
+
+    update(dt, t);
+
+    buttons.length = 0;
+    if (state === STATE.TITLE) drawTitle(t);
+    else if (state === STATE.INTRO) drawIntro(t);
+    else if (state === STATE.SHOWCASE) drawShowcase(t);
+    else if (state === STATE.LINEUP) drawLineup(t);
+    else if (state === STATE.REVEAL) drawReveal(t);
+    else if (state === STATE.ROUND_END) drawRoundEnd(t);
+    else if (state === STATE.OVER) drawOver(t);
+
+    input.justClicked = false;
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
