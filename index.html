@@ -54,7 +54,6 @@
     to { opacity: 1; transform: none; }
   }
 
-  /* Stage backdrop */
   .stage-bg {
     position: absolute; inset: 0; z-index: 0;
     background: #05030a center/cover no-repeat;
@@ -75,7 +74,6 @@
     background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.72) 100%);
   }
 
-  /* HUD */
   #hud {
     position: absolute; top: calc(8px + var(--safe-top)); left: 10px; right: 10px;
     z-index: 20; display: none; gap: 8px;
@@ -117,7 +115,6 @@
   }
   #muteBtn:active { transform: scale(0.94); }
 
-  /* Buttons */
   .btn {
     appearance: none; border: none; cursor: pointer;
     font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
@@ -140,7 +137,6 @@
     box-shadow: 0 0 24px rgba(45,226,255,0.2);
   }
 
-  /* LOADING */
   #screen-loading .brand-mini {
     font-size: 13px; letter-spacing: 0.28em; color: var(--cyan);
     text-transform: uppercase; margin-bottom: 10px;
@@ -150,7 +146,6 @@
     text-align: center; line-height: 1.05;
     background: linear-gradient(180deg, #fff, #ff9ad4);
     -webkit-background-clip: text; background-clip: text; color: transparent;
-    text-shadow: none;
     filter: drop-shadow(0 0 18px rgba(255,45,149,0.45));
   }
   .load-bar {
@@ -167,7 +162,6 @@
   }
   #loadPct { margin-top: 12px; color: rgba(255,255,255,0.65); font-size: 13px; letter-spacing: 0.12em; }
 
-  /* TITLE */
   #screen-title { text-align: center; gap: 10px; }
   .title-badge {
     display: inline-block; padding: 6px 14px; border-radius: 999px;
@@ -185,34 +179,41 @@
     filter: drop-shadow(0 6px 24px rgba(255,45,149,0.55));
   }
   #screen-title .tag {
-    max-width: 360px; margin: 8px auto 22px;
+    max-width: 380px; margin: 8px auto 18px;
     color: rgba(255,255,255,0.72); font-size: 15px; line-height: 1.45;
   }
   .title-portraits {
-    display: flex; gap: 8px; justify-content: center; margin-bottom: 22px;
-    width: 100%; max-width: 520px; overflow: hidden;
+    display: flex; gap: 6px; justify-content: center; margin-bottom: 20px;
+    width: 100%; max-width: 640px; overflow: hidden; flex-wrap: wrap;
   }
   .title-portraits img {
-    width: 72px; height: 96px; object-fit: cover; object-position: center top;
-    border-radius: 12px;
+    width: 52px; height: 70px; object-fit: cover; object-position: center top;
+    border-radius: 10px;
     border: 1px solid rgba(255,45,149,0.4);
     box-shadow: 0 8px 20px rgba(0,0,0,0.45);
     animation: titleFloat 3.2s ease-in-out infinite;
+    transform-origin: 50% 55%;
   }
-  .title-portraits img:nth-child(2) { animation-delay: 0.2s; }
-  .title-portraits img:nth-child(3) { animation-delay: 0.4s; }
-  .title-portraits img:nth-child(4) { animation-delay: 0.6s; }
-  .title-portraits img:nth-child(5) { animation-delay: 0.8s; }
-  .title-portraits img:nth-child(6) { animation-delay: 1s; }
+  .title-portraits img:nth-child(odd) { animation-name: titleJiggleA; }
+  .title-portraits img:nth-child(even) { animation-name: titleJiggleB; animation-delay: 0.35s; }
   @keyframes titleFloat {
     0%, 100% { transform: translateY(0); }
     50% { transform: translateY(-6px); }
+  }
+  @keyframes titleJiggleA {
+    0%, 100% { transform: translateY(0) scaleY(1); }
+    40% { transform: translateY(2px) scaleY(1.04); }
+    70% { transform: translateY(-4px) scaleY(0.99); }
+  }
+  @keyframes titleJiggleB {
+    0%, 100% { transform: translateY(0) scaleY(1) rotate(0deg); }
+    35% { transform: translateY(3px) scaleY(1.05) rotate(0.6deg); }
+    65% { transform: translateY(-3px) scaleY(0.985) rotate(-0.5deg); }
   }
   .high-score {
     margin-top: 16px; color: var(--gold); font-size: 14px; letter-spacing: 0.08em;
   }
 
-  /* SHOWCASE */
   #screen-showcase { justify-content: flex-end; padding-bottom: calc(70px + var(--safe-bottom)); }
   .showcase-stage {
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
@@ -247,23 +248,36 @@
   .showcase-girl img {
     width: 100%; height: 100%; object-fit: cover; object-position: center 18%;
     display: block;
-    transform-origin: 50% 55%;
+    transform-origin: 50% 42%;
     will-change: transform;
   }
-  .showcase-girl.showoff img {
-    animation: showOff 1.6s ease-in-out infinite;
+  /* Soft-body spring for everyone in spotlight */
+  .showcase-girl.jiggle-css img {
+    animation: bustSpring 0.72s cubic-bezier(0.34, 1.4, 0.64, 1) infinite;
+  }
+  .showcase-girl.jiggle-flip img {
+    animation: bustSpringFlip 0.9s cubic-bezier(0.34, 1.35, 0.64, 1) infinite;
   }
   @keyframes enterStage {
     from { opacity: 0; transform: scale(0.82) translateY(30px); filter: blur(6px); }
     to { opacity: 1; transform: scale(1) translateY(0); filter: none; }
   }
-  /* Combined spotlight show-off: scale pulse + chest bob + slight sway */
-  @keyframes showOff {
-    0%   { transform: translateY(0) scale(1.05, 1.03) rotate(-1.3deg); filter: brightness(1.05) saturate(1.1); }
-    25%  { transform: translateY(3px) scale(1.09, 1.07) rotate(0.2deg); filter: brightness(1.12) saturate(1.15); }
-    50%  { transform: translateY(6px) scale(1.12, 1.09) rotate(1.4deg); filter: brightness(1.2) saturate(1.22); }
-    75%  { transform: translateY(2px) scale(1.08, 1.06) rotate(0.1deg); filter: brightness(1.1) saturate(1.12); }
-    100% { transform: translateY(0) scale(1.05, 1.03) rotate(-1.3deg); filter: brightness(1.05) saturate(1.1); }
+  /* Stronger CSS-only soft-body bounce (no B frame) */
+  @keyframes bustSpring {
+    0%   { transform: translateY(0) scaleY(1) scaleX(1) rotate(-1.1deg); filter: brightness(1.05) saturate(1.1); }
+    18%  { transform: translateY(4px) scaleY(1.06) scaleX(0.978) rotate(0.3deg); filter: brightness(1.12) saturate(1.15); }
+    36%  { transform: translateY(7px) scaleY(1.02) scaleX(0.995) rotate(1.4deg); filter: brightness(1.18) saturate(1.2); }
+    54%  { transform: translateY(2px) scaleY(1.055) scaleX(0.982) rotate(-0.4deg); filter: brightness(1.1) saturate(1.12); }
+    72%  { transform: translateY(5px) scaleY(1.025) scaleX(0.992) rotate(0.9deg); filter: brightness(1.14) saturate(1.16); }
+    100% { transform: translateY(0) scaleY(1) scaleX(1) rotate(-1.1deg); filter: brightness(1.05) saturate(1.1); }
+  }
+  /* Milder spring when flipbook A/B already moves the bust */
+  @keyframes bustSpringFlip {
+    0%   { transform: translateY(0) scaleY(1) scaleX(1) rotate(-0.7deg); filter: brightness(1.06) saturate(1.1); }
+    25%  { transform: translateY(3px) scaleY(1.035) scaleX(0.988) rotate(0.5deg); filter: brightness(1.14) saturate(1.16); }
+    50%  { transform: translateY(5px) scaleY(1.015) scaleX(0.996) rotate(1deg); filter: brightness(1.18) saturate(1.2); }
+    75%  { transform: translateY(2px) scaleY(1.03) scaleX(0.99) rotate(-0.2deg); filter: brightness(1.1) saturate(1.12); }
+    100% { transform: translateY(0) scaleY(1) scaleX(1) rotate(-0.7deg); filter: brightness(1.06) saturate(1.1); }
   }
   .showcase-caption {
     position: relative; z-index: 5; text-align: center; width: 100%;
@@ -295,7 +309,6 @@
     letter-spacing: 0.08em;
   }
 
-  /* LINEUP */
   #screen-lineup { justify-content: flex-start; padding-top: calc(78px + var(--safe-top)); }
   .prompt {
     text-align: center; margin-bottom: 14px; z-index: 3;
@@ -344,6 +357,17 @@
   .card img {
     width: 100%; height: 100%; object-fit: cover; object-position: center 20%;
     display: block;
+    transform-origin: 50% 42%;
+    will-change: transform;
+    animation: lineupJiggle 1.55s cubic-bezier(0.37, 0.8, 0.4, 1) infinite;
+  }
+  .card:nth-child(2n) img { animation-delay: 0.25s; animation-duration: 1.7s; }
+  .card:nth-child(3n) img { animation-delay: 0.5s; animation-duration: 1.4s; }
+  @keyframes lineupJiggle {
+    0%, 100% { transform: translateY(0) scaleY(1) rotate(0deg); }
+    30% { transform: translateY(2px) scaleY(1.035) rotate(0.4deg); }
+    55% { transform: translateY(1px) scaleY(1.015) rotate(-0.3deg); }
+    80% { transform: translateY(2px) scaleY(1.028) rotate(0.25deg); }
   }
   .card .nameplate {
     position: absolute; left: 0; right: 0; bottom: 0;
@@ -359,7 +383,6 @@
     letter-spacing: 0.1em; color: var(--pink-hot);
   }
 
-  /* RESULT */
   #screen-result { gap: 14px; text-align: center; }
   .result-banner {
     font-size: clamp(28px, 8vw, 48px); font-weight: 900;
@@ -399,7 +422,6 @@
   }
   .result-meta strong { color: var(--gold); }
 
-  /* GAME OVER */
   #screen-over { gap: 12px; text-align: center; }
   #screen-over h1 {
     margin: 0; font-size: clamp(32px, 9vw, 54px); font-weight: 900;
@@ -418,7 +440,6 @@
   .stat .k { font-size: 11px; letter-spacing: 0.16em; color: rgba(255,255,255,0.5); text-transform: uppercase; }
   .stat .v { margin-top: 4px; font-size: 24px; font-weight: 800; color: var(--gold); }
 
-  /* Flash / particles overlay */
   #fx {
     position: absolute; inset: 0; z-index: 30; pointer-events: none;
   }
@@ -442,13 +463,14 @@
   .toast.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 
   @media (max-width: 420px) {
-    .title-portraits img { width: 52px; height: 70px; }
+    .title-portraits img { width: 40px; height: 54px; }
     .lineup-grid { grid-template-columns: repeat(2, 1fr); }
     .hud-pill .value { font-size: 15px; }
     .btn { min-width: 160px; padding: 14px 28px; }
   }
   @media (min-width: 700px) {
     .lineup-grid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+    .title-portraits img { width: 56px; height: 76px; }
   }
 </style>
 </head>
@@ -472,7 +494,6 @@
 
   <div id="fx"><div class="flash" id="flash"></div><div class="toast" id="toast"></div></div>
 
-  <!-- LOADING -->
   <section class="screen active" id="screen-loading">
     <div class="brand-mini">Rockstar Nightclub Vibes</div>
     <h1>Best Boobies<br/>Showcase</h1>
@@ -480,17 +501,15 @@
     <div id="loadPct">Loading assets… 0%</div>
   </section>
 
-  <!-- TITLE -->
   <section class="screen" id="screen-title">
-    <div class="title-badge">Neon Club Edition</div>
+    <div class="title-badge">Neon Club Edition · 19 Queens</div>
     <h1>Best Boobies<br/>Showcase</h1>
-    <p class="tag">Six GTA-style club queens. Watch the spotlight show-off, then tap who has the best.</p>
+    <p class="tag">Nineteen illustrated club queens. Spotlight jigglers, fresh lineup every round — tap who has the best.</p>
     <div class="title-portraits" id="titlePortraits"></div>
     <button class="btn" id="btnStart">Start Show</button>
     <div class="high-score" id="titleHigh">High Score: 0</div>
   </section>
 
-  <!-- SHOWCASE -->
   <section class="screen" id="screen-showcase">
     <div class="showcase-stage">
       <div class="spotlight-ring"></div>
@@ -506,7 +525,6 @@
     </div>
   </section>
 
-  <!-- LINEUP -->
   <section class="screen" id="screen-lineup">
     <div class="prompt">
       <h2>Who has the best boobies?</h2>
@@ -515,7 +533,6 @@
     <div class="lineup-grid" id="lineupGrid"></div>
   </section>
 
-  <!-- RESULT -->
   <section class="screen" id="screen-result">
     <div class="result-banner" id="resultBanner">NICE</div>
     <div class="result-duo" id="resultDuo"></div>
@@ -523,7 +540,6 @@
     <button class="btn" id="btnNext">Next Round</button>
   </section>
 
-  <!-- OVER -->
   <section class="screen" id="screen-over">
     <h1>Show's Over</h1>
     <div class="over-stats">
@@ -544,15 +560,31 @@
   const LS_MUTE = "bestBoobiesShowcase_muted";
   const MAX_ROUNDS = 10;
   const MAX_MISSES = 3;
-  const SHOWCASE_MS = 2400;
+  const SHOWCASE_MS = 2600;
+  const FLIP_MIN_MS = 130;
+  const FLIP_MAX_MS = 170;
 
+  // 19 unique illustrated club queens (stage names invented — not real people)
   const GIRLS = [
-    { id: 1, src: "assets/c1.png", name: "Velvet", tag: "Purple Heat" },
-    { id: 2, src: "assets/c2.png", name: "Cherry", tag: "Pink Pop" },
-    { id: 3, src: "assets/c3.png", name: "Ember", tag: "Lace Fire" },
-    { id: 4, src: "assets/c4.png", name: "Silver", tag: "Chrome Glow" },
-    { id: 5, src: "assets/c5.png", name: "Roxy", tag: "Club Queen" },
-    { id: 6, src: "assets/c6.png", name: "Honey", tag: "Golden Hour" },
+    { id: 1,  src: "assets/01a.png", bounce: "assets/01b.png", name: "Velvet",  tag: "Purple Heat" },
+    { id: 2,  src: "assets/02a.png", bounce: null,             name: "Cherry",  tag: "Pink Pop" },
+    { id: 3,  src: "assets/03a.png", bounce: null,             name: "Ember",   tag: "Lace Fire" },
+    { id: 4,  src: "assets/04a.png", bounce: null,             name: "Nova",    tag: "Star Dust" },
+    { id: 5,  src: "assets/05a.png", bounce: null,             name: "Roxy",    tag: "Club Queen" },
+    { id: 6,  src: "assets/06a.png", bounce: "assets/06b.png", name: "Honey",   tag: "Golden Hour" },
+    { id: 7,  src: "assets/07a.png", bounce: "assets/07b.png", name: "Blaze",   tag: "Neon Whip" },
+    { id: 8,  src: "assets/08a.png", bounce: null,             name: "Candy",   tag: "Sugar Rush" },
+    { id: 9,  src: "assets/09a.png", bounce: null,             name: "Jade",    tag: "Green Light" },
+    { id: 10, src: "assets/10a.png", bounce: null,             name: "Storm",   tag: "Thunder Thighs" },
+    { id: 11, src: "assets/11a.png", bounce: null,             name: "Pixie",   tag: "Tiny Trouble" },
+    { id: 12, src: "assets/12a.png", bounce: null,             name: "Luna",    tag: "Moon Glow" },
+    { id: 13, src: "assets/13a.png", bounce: null,             name: "Scarlet", tag: "Red Alert" },
+    { id: 14, src: "assets/14a.png", bounce: null,             name: "Vixen",   tag: "Fox Trap" },
+    { id: 15, src: "assets/15a.png", bounce: null,             name: "Daisy",   tag: "Petal Push" },
+    { id: 16, src: "assets/16a.png", bounce: null,             name: "Raven",   tag: "Night Wing" },
+    { id: 17, src: "assets/17a.png", bounce: null,             name: "Pearl",   tag: "Satin Shine" },
+    { id: 18, src: "assets/18a.png", bounce: null,             name: "Foxy",    tag: "Wild Card" },
+    { id: 19, src: "assets/19a.png", bounce: null,             name: "Misty",   tag: "Smoke Show" },
   ];
 
   const STAGE_SRC = "assets/stage.png";
@@ -581,10 +613,11 @@
     lastCorrect: false,
     lastPoints: 0,
     showcaseTimer: null,
+    flipTimer: null,
+    flipOnB: false,
     images: {},
   };
 
-  // ---------- Audio (Web Audio, no CDN) ----------
   const audio = {
     ctx: null,
     muted: localStorage.getItem(LS_MUTE) === "1",
@@ -632,7 +665,6 @@
   });
   updateMuteBtn();
 
-  // ---------- Screen helpers ----------
   function showScreen(name) {
     Object.values(screens).forEach((s) => s.classList.remove("active"));
     screens[name].classList.add("active");
@@ -664,9 +696,12 @@
     if (on) setTimeout(() => el("flash").classList.remove("on"), 280);
   }
 
-  // ---------- Preload ----------
   function preload() {
-    const paths = [STAGE_SRC, ...GIRLS.map((g) => g.src)];
+    const paths = [STAGE_SRC];
+    GIRLS.forEach((g) => {
+      paths.push(g.src);
+      if (g.bounce) paths.push(g.bounce);
+    });
     let done = 0;
     return Promise.all(paths.map((src) => new Promise((resolve) => {
       const img = new Image();
@@ -686,7 +721,6 @@
     el("stageBg").style.backgroundImage = `url("${STAGE_SRC}")`;
   }
 
-  // ---------- Game logic ----------
   function rand(a, b) { return a + Math.random() * (b - a); }
   function shuffle(arr) {
     const a = arr.slice();
@@ -695,6 +729,28 @@
       [a[i], a[j]] = [a[j], a[i]];
     }
     return a;
+  }
+
+  function stopFlipbook() {
+    if (state.flipTimer) {
+      clearTimeout(state.flipTimer);
+      state.flipTimer = null;
+    }
+    state.flipOnB = false;
+  }
+
+  function startFlipbook(contestant) {
+    stopFlipbook();
+    const img = el("showcaseImg");
+    if (!contestant.bounce) return;
+
+    const tick = () => {
+      state.flipOnB = !state.flipOnB;
+      img.src = state.flipOnB ? contestant.bounce : contestant.src;
+      const delay = FLIP_MIN_MS + Math.random() * (FLIP_MAX_MS - FLIP_MIN_MS);
+      state.flipTimer = setTimeout(tick, delay);
+    };
+    state.flipTimer = setTimeout(tick, FLIP_MIN_MS + Math.random() * 40);
   }
 
   function startGame() {
@@ -717,10 +773,10 @@
     state.pickedId = -1;
     updateHud();
 
-    const count = 3 + Math.floor(Math.random() * 3); // 3–5
+    // Fresh random subset of 4–6 from the full 19-cast pool
+    const count = 4 + Math.floor(Math.random() * 3);
     const picks = shuffle(GIRLS).slice(0, count);
 
-    // Appeal scores — random each round; difficulty compresses spread
     const difficulty = (state.round - 1) / (MAX_ROUNDS - 1);
     const lineup = picks.map((g) => {
       const base = rand(40, 95);
@@ -729,7 +785,6 @@
       return { ...g, appeal };
     });
 
-    // Favorite = highest appeal; tie-break random
     let best = -Infinity;
     let favorites = [];
     for (const c of lineup) {
@@ -751,6 +806,7 @@
 
   function playShowcaseAt(i) {
     clearTimeout(state.showcaseTimer);
+    stopFlipbook();
     if (i >= state.lineup.length) {
       beginLineup();
       return;
@@ -760,11 +816,11 @@
     const wrap = el("showcaseGirl");
     const img = el("showcaseImg");
 
-    // Restart enter animation
-    wrap.classList.remove("showoff");
+    wrap.classList.remove("jiggle-css", "jiggle-flip");
     wrap.style.animation = "none";
     void wrap.offsetWidth;
     wrap.style.animation = "";
+
     img.src = c.src;
     img.alt = c.name;
     el("showcaseName").textContent = c.name;
@@ -774,7 +830,14 @@
     dots.innerHTML = state.lineup.map((_, di) => `<i class="${di === i ? "on" : ""}"></i>`).join("");
 
     audio.spot();
-    requestAnimationFrame(() => wrap.classList.add("showoff"));
+    requestAnimationFrame(() => {
+      if (c.bounce) {
+        wrap.classList.add("jiggle-flip");
+        startFlipbook(c);
+      } else {
+        wrap.classList.add("jiggle-css");
+      }
+    });
 
     state.showcaseTimer = setTimeout(() => playShowcaseAt(i + 1), SHOWCASE_MS);
   }
@@ -787,6 +850,7 @@
 
   function beginLineup() {
     clearTimeout(state.showcaseTimer);
+    stopFlipbook();
     showScreen("lineup");
     const grid = el("lineupGrid");
     grid.innerHTML = "";
@@ -802,6 +866,19 @@
       `;
       card.addEventListener("click", () => pickContestant(c.id, card));
       grid.appendChild(card);
+
+      // Subtle A/B flip for lineup cards that have bounce frames
+      if (c.bounce) {
+        const cardImg = card.querySelector("img");
+        let onB = false;
+        const flip = () => {
+          if (!screens.lineup.classList.contains("active")) return;
+          onB = !onB;
+          cardImg.src = onB ? c.bounce : c.src;
+          setTimeout(flip, 280 + Math.random() * 160);
+        };
+        setTimeout(flip, 200 + idx * 90);
+      }
     });
   }
 
@@ -873,6 +950,7 @@
 
   function endGame() {
     clearTimeout(state.showcaseTimer);
+    stopFlipbook();
     if (state.score > state.highScore) {
       state.highScore = state.score;
       localStorage.setItem(LS_SCORE, String(state.highScore));
@@ -886,7 +964,6 @@
     el("hud").classList.remove("visible");
   }
 
-  // ---------- Wire UI ----------
   el("btnStart").addEventListener("click", () => { audio.ensure(); startGame(); });
   el("btnAgain").addEventListener("click", () => { audio.ensure(); startGame(); });
   el("btnNext").addEventListener("click", () => {
@@ -897,13 +974,14 @@
 
   screens.showcase.addEventListener("click", skipShowcase);
 
-  // ---------- Boot ----------
   setStageBg();
   el("titleHigh").textContent = `High Score: ${state.highScore}`;
 
   preload().then(() => {
     const tp = el("titlePortraits");
-    tp.innerHTML = GIRLS.map((g) => `<img src="${g.src}" alt="${g.name}" />`).join("");
+    // Show a rotating sample of the big cast on the title screen
+    const sample = shuffle(GIRLS).slice(0, 8);
+    tp.innerHTML = sample.map((g) => `<img src="${g.src}" alt="${g.name}" />`).join("");
     setTimeout(() => showScreen("title"), 200);
   });
 })();
